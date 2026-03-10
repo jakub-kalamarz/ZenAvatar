@@ -15,6 +15,10 @@ public struct AvatarColor: Equatable, Sendable {
         Color(red: red, green: green, blue: blue)
     }
 
+    var isLight: Bool {
+        red * 0.299 + green * 0.587 + blue * 0.114 >= 128.0 / 255.0
+    }
+
     func mixed(with other: AvatarColor, ratio: Double) -> AvatarColor {
         let clamped = min(max(ratio, 0), 1)
         return AvatarColor(

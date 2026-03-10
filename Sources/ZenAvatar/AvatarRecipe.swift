@@ -49,46 +49,66 @@ struct PixelRecipe: Equatable {
 }
 
 struct BeamRecipe: Equatable {
-    let baseIndex: Int
-    let bar1Index: Int
-    let bar2Index: Int
-    let accentIndex: Int
-    let bar1Width: Double
-    let bar1Height: Double
-    let bar2Width: Double
-    let bar2Height: Double
-    let bar1OffsetX: Double
-    let bar1OffsetY: Double
-    let bar2OffsetX: Double
-    let bar2OffsetY: Double
-    let accentSize: Double
-    let accentOffsetX: Double
-    let accentOffsetY: Double
+    // Colors
+    let backgroundIndex: Int
+    let wrapperColorIndex: Int
+    // Wrapper transform (in 36×36 SVG units)
+    let wrapperTranslateX: Double
+    let wrapperTranslateY: Double
+    let wrapperRotate: Double   // degrees
+    let wrapperScale: Double
+    let isCircle: Bool          // wrapper corner radius: fully round vs SIZE/6
+    // Face
+    let isMouthOpen: Bool
+    let eyeSpread: Double       // 0…5
+    let mouthSpread: Double     // 0…3
+    let faceRotate: Double      // degrees 0…10
+    let faceTranslateX: Double
+    let faceTranslateY: Double
 
     static func generate(using rng: inout AvatarRNG, palette: AvatarPalette) -> BeamRecipe {
         var used: Set<Int> = []
         let paletteCount = palette.count
-        let baseIndex = rng.nextColorIndex(excluding: &used, count: paletteCount)
-        let bar1Index = rng.nextColorIndex(excluding: &used, count: paletteCount)
-        let bar2Index = rng.nextColorIndex(excluding: &used, count: paletteCount)
-        let accentIndex = rng.nextColorIndex(excluding: &used, count: paletteCount)
+        let backgroundIndex = rng.nextColorIndex(excluding: &used, count: paletteCount)
+        let wrapperColorIndex = rng.nextColorIndex(excluding: &used, count: paletteCount)
+
+        let SIZE = 36.0
+
+        let preX = rng.nextDouble(in: 0...10)
+        let wrapperTranslateX = preX < 5 ? preX + SIZE / 9 : preX
+        let preY = rng.nextDouble(in: 0...10)
+        let wrapperTranslateY = preY < 5 ? preY + SIZE / 9 : preY
+
+        let wrapperRotate = rng.nextDouble(in: 0...360)
+        let wrapperScale = 1.0 + rng.nextDouble(in: 0...(SIZE / 12)) / 10.0
+        let isCircle = rng.nextBool(probability: 0.5)
+        let isMouthOpen = rng.nextBool(probability: 0.5)
+
+        let eyeSpread = rng.nextDouble(in: 0...5)
+        let mouthSpread = rng.nextDouble(in: 0...3)
+        let faceRotate = rng.nextDouble(in: 0...10)
+
+        let faceTranslateX = wrapperTranslateX > SIZE / 6
+            ? wrapperTranslateX / 2
+            : rng.nextDouble(in: 0...8)
+        let faceTranslateY = wrapperTranslateY > SIZE / 6
+            ? wrapperTranslateY / 2
+            : rng.nextDouble(in: 0...7)
 
         return BeamRecipe(
-            baseIndex: baseIndex,
-            bar1Index: bar1Index,
-            bar2Index: bar2Index,
-            accentIndex: accentIndex,
-            bar1Width: rng.nextDouble(in: 0.90...1.10),
-            bar1Height: rng.nextDouble(in: 0.22...0.32),
-            bar2Width: rng.nextDouble(in: 0.85...1.05),
-            bar2Height: rng.nextDouble(in: 0.22...0.32),
-            bar1OffsetX: rng.nextDouble(in: -0.10...0.10),
-            bar1OffsetY: rng.nextDouble(in: -0.10...0.10),
-            bar2OffsetX: rng.nextDouble(in: -0.10...0.10),
-            bar2OffsetY: rng.nextDouble(in: -0.10...0.10),
-            accentSize: rng.nextDouble(in: 0.18...0.26),
-            accentOffsetX: rng.nextDouble(in: -0.25...0.25),
-            accentOffsetY: rng.nextDouble(in: -0.25...0.25)
+            backgroundIndex: backgroundIndex,
+            wrapperColorIndex: wrapperColorIndex,
+            wrapperTranslateX: wrapperTranslateX,
+            wrapperTranslateY: wrapperTranslateY,
+            wrapperRotate: wrapperRotate,
+            wrapperScale: wrapperScale,
+            isCircle: isCircle,
+            isMouthOpen: isMouthOpen,
+            eyeSpread: eyeSpread,
+            mouthSpread: mouthSpread,
+            faceRotate: faceRotate,
+            faceTranslateX: faceTranslateX,
+            faceTranslateY: faceTranslateY
         )
     }
 }

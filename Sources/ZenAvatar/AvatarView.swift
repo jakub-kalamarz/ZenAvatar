@@ -6,21 +6,39 @@ public enum AvatarVariant: String, CaseIterable, Sendable {
     case ring
 }
 
+public enum AvatarShape: Sendable {
+    case circle
+    case square
+}
+
+private struct AvatarClipShape: Shape {
+    let shape: AvatarShape
+    func path(in rect: CGRect) -> Path {
+        switch shape {
+        case .circle: Circle().path(in: rect)
+        case .square: Rectangle().path(in: rect)
+        }
+    }
+}
+
 public struct AvatarView: View {
     private let size: CGFloat
     private let palette: AvatarPalette
     private let recipe: AvatarRecipe
+    private let shape: AvatarShape
 
     public init(
         seed: String,
         size: CGFloat,
         variant: AvatarVariant = .pixel,
-        palette: AvatarPalette = .default
+        palette: AvatarPalette = .default,
+        shape: AvatarShape = .circle
     ) {
         let trimmed = seed.trimmingCharacters(in: .whitespacesAndNewlines)
         let normalizedSeed = trimmed.isEmpty ? "Player" : trimmed
         self.size = size
         self.palette = palette
+        self.shape = shape
         self.recipe = AvatarRecipe.generate(seed: normalizedSeed, variant: variant, palette: palette)
     }
 
@@ -28,11 +46,11 @@ public struct AvatarView: View {
         Group {
             switch recipe {
             case .pixel(let recipe):
-                PixelAvatar(recipe: recipe, size: size, palette: palette)
+                PixelAvatar(recipe: recipe, size: size, palette: palette, shape: shape)
             case .beam(let recipe):
-                BeamAvatar(recipe: recipe, size: size, palette: palette)
+                BeamAvatar(recipe: recipe, size: size, palette: palette, shape: shape)
             case .ring(let recipe):
-                RingAvatar(recipe: recipe, size: size, palette: palette)
+                RingAvatar(recipe: recipe, size: size, palette: palette, shape: shape)
             }
         }
         .frame(width: size, height: size)
@@ -43,6 +61,7 @@ private struct PixelAvatar: View {
     let recipe: PixelRecipe
     let size: CGFloat
     let palette: AvatarPalette
+    let shape: AvatarShape
 
     private var background: Color {
         let base = palette.color(at: recipe.backgroundIndex)
@@ -57,7 +76,7 @@ private struct PixelAvatar: View {
             let offset = (dimension - contentSize) / 2
 
             ZStack {
-                Circle()
+                AvatarClipShape(shape: shape)
                     .fill(background)
                     .frame(width: dimension, height: dimension)
 
@@ -77,7 +96,7 @@ private struct PixelAvatar: View {
                 }
             }
             .frame(width: dimension, height: dimension)
-            .clipShape(Circle())
+            .clipShape(AvatarClipShape(shape: shape))
         }
     }
 }
@@ -86,30 +105,99 @@ private struct BeamAvatar: View {
     let recipe: BeamRecipe
     let size: CGFloat
     let palette: AvatarPalette
+    let shape: AvatarShape
 
     var body: some View {
-        ZStack {
-            Circle()
-                .fill(palette.color(at: recipe.baseIndex).color)
+        Canvas { context, canvasSize in
+            // All coordinates are in the 36×36 SVG unit space, scaled to canvas.
+            let s = canvasSize.width / 36.0
+            let SIZE = 36.0 * s
+            let cx = SIZE / 2
+            let cy = SIZE / 2
+            let fullRect = CGRect(origin: .zero, size: canvasSize)
 
-            RoundedRectangle(cornerRadius: size * 0.18)
-                .fill(palette.color(at: recipe.bar1Index).color)
-                .frame(width: size * CGFloat(recipe.bar1Width), height: size * CGFloat(recipe.bar1Height))
-                .rotationEffect(.degrees(45))
-                .offset(x: size * CGFloat(recipe.bar1OffsetX), y: size * CGFloat(recipe.bar1OffsetY))
+            // ── Clip to avatar shape ──────────────────────────────────────────
+            switch shape {
+            case .circle: context.clip(to: Path(ellipseIn: fullRect))
+            case .square:  context.clip(to: Path(fullRect))
+            }
 
-            RoundedRectangle(cornerRadius: size * 0.18)
-                .fill(palette.color(at: recipe.bar2Index).color)
-                .frame(width: size * CGFloat(recipe.bar2Width), height: size * CGFloat(recipe.bar2Height))
-                .rotationEffect(.degrees(-45))
-                .offset(x: size * CGFloat(recipe.bar2OffsetX), y: size * CGFloat(recipe.bar2OffsetY))
+            // ── 1. Background ─────────────────────────────────────────────────
+            context.fill(Path(fullRect), with: .color(palette.color(at: recipe.backgroundIndex).color))
 
-            Circle()
-                .fill(palette.color(at: recipe.accentIndex).color)
-                .frame(width: size * CGFloat(recipe.accentSize), height: size * CGFloat(recipe.accentSize))
-                .offset(x: size * CGFloat(recipe.accentOffsetX), y: size * CGFloat(recipe.accentOffsetY))
+            // ── 2. Wrapper ────────────────────────────────────────────────────
+            // SVG transform: translate(tx ty) rotate(r cx cy) scale(sw)
+            // Equivalent: T(tx,ty) · T(cx,cy) · R(r) · T(-cx,-cy) · S(sw)
+            let tx = recipe.wrapperTranslateX * s
+            let ty = recipe.wrapperTranslateY * s
+            let wr = Angle.degrees(recipe.wrapperRotate)
+            let sw = recipe.wrapperScale
+
+            var wrapperCtx = context
+            wrapperCtx.translateBy(x: tx + cx, y: ty + cy)
+            wrapperCtx.rotate(by: wr)
+            wrapperCtx.translateBy(x: -cx, y: -cy)
+            wrapperCtx.scaleBy(x: sw, y: sw)
+
+            let wrapperCorner = recipe.isCircle ? SIZE : SIZE / 6
+            wrapperCtx.fill(
+                Path(roundedRect: fullRect, cornerRadius: wrapperCorner),
+                with: .color(palette.color(at: recipe.wrapperColorIndex).color)
+            )
+
+            // ── 3. Face ───────────────────────────────────────────────────────
+            // Face color = contrast against wrapper (black if wrapper is light, white if dark)
+            let faceColor: Color = palette.color(at: recipe.wrapperColorIndex).isLight ? .black : .white
+
+            // SVG transform: translate(ftx fty) rotate(fr cx cy)
+            let ftx = recipe.faceTranslateX * s
+            let fty = recipe.faceTranslateY * s
+            let fr = Angle.degrees(recipe.faceRotate)
+
+            var faceCtx = context
+            faceCtx.translateBy(x: ftx + cx, y: fty + cy)
+            faceCtx.rotate(by: fr)
+            faceCtx.translateBy(x: -cx, y: -cy)
+
+            // Eyes — each is a 1.5×2 rounded rect
+            let eyeY = 14 * s
+            let eyeW = 1.5 * s
+            let eyeH = 2.0 * s
+            let eyeR = 1.0 * s
+            faceCtx.fill(
+                Path(roundedRect: CGRect(x: (14 - recipe.eyeSpread) * s, y: eyeY, width: eyeW, height: eyeH), cornerRadius: eyeR),
+                with: .color(faceColor)
+            )
+            faceCtx.fill(
+                Path(roundedRect: CGRect(x: (20 + recipe.eyeSpread) * s, y: eyeY, width: eyeW, height: eyeH), cornerRadius: eyeR),
+                with: .color(faceColor)
+            )
+
+            // Mouth
+            let my = (19 + recipe.mouthSpread) * s
+            var mouth = Path()
+            if recipe.isMouthOpen {
+                // M15,my c2,1 4,1 6,0  (open smile stroke)
+                mouth.move(to: CGPoint(x: 15 * s, y: my))
+                mouth.addCurve(
+                    to: CGPoint(x: 21 * s, y: my),
+                    control1: CGPoint(x: 17 * s, y: my + s),
+                    control2: CGPoint(x: 19 * s, y: my + s)
+                )
+                faceCtx.stroke(mouth, with: .color(faceColor), style: StrokeStyle(lineWidth: s, lineCap: .round))
+            } else {
+                // M13,my a1,0.75 0 0,0 10,0 (closed smile fill)
+                // SVG auto-scales radii: effective rx=5, ry=3.75 in SVG units.
+                // Quadratic control chosen so the midpoint lands at (18, my + 3.75·s).
+                mouth.move(to: CGPoint(x: 13 * s, y: my))
+                mouth.addQuadCurve(
+                    to: CGPoint(x: 23 * s, y: my),
+                    control: CGPoint(x: 18 * s, y: my + 7.5 * s)
+                )
+                faceCtx.fill(mouth, with: .color(faceColor))
+            }
         }
-        .clipShape(Circle())
+        .frame(width: size, height: size)
     }
 }
 
@@ -117,6 +205,7 @@ private struct RingAvatar: View {
     let recipe: RingRecipe
     let size: CGFloat
     let palette: AvatarPalette
+    let shape: AvatarShape
 
     private var background: Color {
         let base = palette.color(at: recipe.backgroundIndex)
@@ -125,7 +214,7 @@ private struct RingAvatar: View {
 
     var body: some View {
         ZStack {
-            Circle()
+            AvatarClipShape(shape: shape)
                 .fill(background)
 
             Circle()
@@ -143,6 +232,6 @@ private struct RingAvatar: View {
                 .fill(palette.color(at: recipe.centerIndex).color)
                 .frame(width: size * CGFloat(recipe.centerScale), height: size * CGFloat(recipe.centerScale))
         }
-        .clipShape(Circle())
+        .clipShape(AvatarClipShape(shape: shape))
     }
 }
