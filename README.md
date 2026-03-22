@@ -13,7 +13,7 @@ Deterministic SwiftUI avatars for Apple apps.
 Add the package in Xcode using the GitHub repository URL, or declare it in `Package.swift`:
 
 ```swift
-.package(url: "https://github.com/jakub-kalamarz/ZenAvatar.git", from: "1.0.0")
+.package(url: "https://github.com/jakub-kalamarz/ZenAvatar.git", from: "2.0.0")
 ```
 
 Then add `ZenAvatar` to your target dependencies.
@@ -28,9 +28,10 @@ let palette = AvatarPalette(colors: [.red, .orange, .yellow])
 AvatarView(
     seed: "Alice",
     size: 64,
-    variant: .beam,
     palette: palette
 )
 ```
 
-If a palette has fewer colors than a variant would ideally use, ZenAvatar reuses colors cyclically.
+ZenAvatar currently exposes a single `.beam` style.
+
+If a palette has fewer colors than `.beam` uses, ZenAvatar reuses colors cyclically.
